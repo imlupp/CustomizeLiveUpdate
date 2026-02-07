@@ -8,7 +8,7 @@
 - 点击“已取件”按钮自动删除通知和列表项
 
  **注意：最低支持**：Android 16 (API 36)
- 例如Xiaomi HyperOS3.0.300、ColorOS 16等系统，需支持Google官方的Live Update实时活动通知。
+ 例如Xiaomi HyperOS 3.0.300、ColorOS 16等系统，需支持Google官方的Live Update实时活动通知。
 
 
 ### 常见问题
