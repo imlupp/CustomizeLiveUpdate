@@ -1,6 +1,6 @@
 # CustomizeLiveUpdate - 快递取件码实时通知小工具
 
-一个简单的 Android 应用，帮助用户快速将快递取件信息转为 **Live Update**（Android 16+ 实时活动通知），方便在锁屏、灵动岛（状态栏芯片）和 AOD 上随时查看取件码。
+一个简单的 Android 应用，帮助用户快速将快递取件信息转为实时活动通知），方便在锁屏、灵动岛和 AOD 上随时查看取件码。
 
 目前支持：
 - 输入取件点 + 取件码 → 发送灵动岛通知
@@ -8,10 +8,11 @@
 - 点击“已取件”按钮自动删除通知和列表项
 
  **注意：最低支持**：Android 16 (API 36)
+ 例如Xiaomi HyperOS3.0.300、ColorOS 16等系统，需支持Google官方的Live Update实时活动通知。
 
 
 ### 常见问题
-- **通知不显示为 Live Update**？  
+- **通知不显示为灵动岛**？  
   → 确认 targetSdk = 36  
   → 手机系统设置中开启“promoted notifications”或“实时活动”相关选项  
   → 确保通知权限已允许
