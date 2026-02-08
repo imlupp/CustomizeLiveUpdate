@@ -12,9 +12,9 @@
 ## ⚠️ 使用须知  
 **最低系统要求**：Android 16 (API 36)  
 例如：  
-- Xiaomi HyperOS 3.0.300  
-- ColorOS 16  
-及更高版本  
+- Xiaomi HyperOS 3.0.300 及更高版本
+- ColorOS 16 及更高版本
+  
 
 > 📌 原始设备制造商 (OEM) 可能对实时活动通知有额外限制，请确保系统支持 Google Live Update 并已开启相应开关。
 
