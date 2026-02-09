@@ -25,11 +25,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -38,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,7 +64,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.app.NotificationManagerCompat
-import kotlinx.coroutines.launch
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.text.style.TextOverflow
 
 class MainActivity : ComponentActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
@@ -76,7 +86,9 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             AppDatabase::class.java,
             "pickup_database"
-        ).build()
+        )
+            .fallbackToDestructiveMigration()
+            .build()
 
         permissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -99,17 +111,30 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 恢复旧通知
         CoroutineScope(Dispatchers.IO).launch {
-            val dao = database.pickupDao()
-            val allItems = dao.getAll().first()
-            val sortedItems = allItems.sortedBy { it.id }
+            val pickupDao = database.pickupDao()
+            val mealDao = database.mealDao()
+
+            val pickupItems = pickupDao.getAll().first().sortedBy { it.id }
+            val mealItems = mealDao.getAll().first().sortedBy { it.id }
 
             withContext(Dispatchers.Main) {
-                sortedItems.forEachIndexed { index, item ->
+                pickupItems.forEachIndexed { index, item ->
                     val displayNumber = index + 1
                     sendPickupLiveUpdate(
                         context = this@MainActivity,
+                        location = item.location,
+                        code = item.code,
+                        dbId = item.id,
+                        displayNumber = displayNumber
+                    )
+                }
+
+                mealItems.forEachIndexed { index, item ->
+                    val displayNumber = index + 1
+                    sendMealLiveUpdate(
+                        context = this@MainActivity,
+                        type = item.type,
                         location = item.location,
                         code = item.code,
                         dbId = item.id,
@@ -122,12 +147,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CustomizeLiveUpdateTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MyScreen(
-                        permissionLauncher = permissionLauncher,
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                MainApp(permissionLauncher = permissionLauncher)
             }
         }
     }
@@ -143,6 +163,62 @@ class MainActivity : ComponentActivity() {
             }
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
+        }
+    }
+}
+
+enum class BottomTab(val label: String) {
+    Pickup("取件码"),
+    Meal("取餐码"),
+    Settings("设置")
+}
+
+@Composable
+fun MainApp(
+    permissionLauncher: ActivityResultLauncher<String>
+) {
+    val tabs = BottomTab.values().toList()
+    var selectedTab by rememberSaveable { mutableStateOf(BottomTab.Pickup) }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            NavigationBar {
+                tabs.forEach { tab ->
+                    val icon = when (tab) {
+                        BottomTab.Pickup -> Icons.Filled.Home
+                        BottomTab.Meal -> Icons.Filled.Search
+                        BottomTab.Settings -> Icons.Filled.Settings
+                    }
+                    NavigationBarItem(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        icon = {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = tab.label
+                            )
+                        },
+                        label = { Text(tab.label) }
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        when (selectedTab) {
+            BottomTab.Pickup -> MyScreen(
+                permissionLauncher = permissionLauncher,
+                modifier = Modifier.padding(innerPadding)
+            )
+
+            BottomTab.Meal -> MealScreen(
+                permissionLauncher = permissionLauncher,
+                modifier = Modifier.padding(innerPadding)
+            )
+
+            BottomTab.Settings -> SettingsScreen(
+                modifier = Modifier.padding(innerPadding)
+            )
         }
     }
 }
@@ -269,6 +345,201 @@ fun MyScreen(
         }
     }
 }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MealScreen(
+    permissionLauncher: ActivityResultLauncher<String>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val mealTypes = listOf("咖啡", "奶茶", "西餐", "中餐")
+    var selectedMealType by remember { mutableStateOf(mealTypes.first()) }
+    var mealLocation by remember { mutableStateOf("") }
+    var mealCode by remember { mutableStateOf("") }
+
+    val mealItems by MainActivity.database.mealDao().getAll()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "取餐码 Live Updates",
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // SegmentedButton 部分（颜色参数已修正）
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            // 可选：加点间距或高度调整
+            // colors = SegmentedButtonDefaults.colors() 如果想用默认主题色，就不用写 colors
+        ) {
+            mealTypes.forEachIndexed { index, type ->
+                SegmentedButton(
+                    selected = selectedMealType == type,
+                    onClick = { selectedMealType = type },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = mealTypes.size
+                    ),
+                    // 这里是正确颜色参数（用你的主题色或自定义）
+                    colors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = MaterialTheme.colorScheme.primary,          // 选中背景（通常蓝色）
+                        activeContentColor = MaterialTheme.colorScheme.onPrimary,          // 选中文字（白色）
+                        inactiveContainerColor = MaterialTheme.colorScheme.surfaceVariant, // 未选中背景（浅灰）
+                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // 未选中文字（深灰）
+                        // 可选：加边框颜色
+                        activeBorderColor = MaterialTheme.colorScheme.primary,
+                        inactiveBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                ) {
+                    Text(
+                        text = type,
+                        style = MaterialTheme.typography.labelLarge,  // 字体大一点，更清晰
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))  // 加大点间距，美观
+
+        TextField(
+            value = mealLocation,
+            onValueChange = { mealLocation = it },
+            label = { Text("取餐点（如：星巴克一楼）") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        TextField(
+            value = mealCode,
+            onValueChange = { mealCode = it },
+            label = { Text("取餐码（如：A47）") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                if (mealLocation.isBlank() || mealCode.isBlank()) {
+                    Toast.makeText(context, "请填写取餐点和取餐码", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    Toast.makeText(context, "请先允许通知权限", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+
+                coroutineScope.launch {
+                    addMealItemAndNotify(
+                        type = selectedMealType,
+                        location = mealLocation,
+                        code = mealCode,
+                        context = context
+                    )
+                    mealLocation = ""
+                    mealCode = ""
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("添加至取餐列表")
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text("我的取餐列表", style = MaterialTheme.typography.titleMedium)
+
+        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            items(mealItems) { item ->
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val allItems = mealItems.sortedBy { it.id }
+                        val displayNumber = allItems.indexOfFirst { it.id == item.id } + 1
+
+                        Text(
+                            "#$displayNumber  ",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("类型：${item.type}")
+                            Text("取餐点：${item.location}")
+                            Text(
+                                "取餐码：${item.code}",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                        IconButton(onClick = {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                MainActivity.database.mealDao().delete(item)
+                                NotificationManagerCompat.from(context).cancel(item.id)
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "删除",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(
+    modifier: Modifier = Modifier
+) {
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "设置",
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            text = "版本：1.0.2-beta",
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
 
 // 新增：独立的 suspend 函数，负责插入数据库并发送通知
 private suspend fun addPickupItemAndNotify(location: String, code: String, context: Context) {
@@ -291,6 +562,38 @@ private suspend fun addPickupItemAndNotify(location: String, code: String, conte
             )
         }
         Log.d("PickupApp", "插入成功，显示编号 #$displayNumber，真实 ID ${insertedItem.id}")
+    }
+}
+
+private suspend fun addMealItemAndNotify(
+    type: String,
+    location: String,
+    code: String,
+    context: Context
+) {
+    withContext(Dispatchers.IO) {
+        val dao = MainActivity.database.mealDao()
+        val item = MealItem(type = type, location = location, code = code)
+        dao.insert(item)
+
+        val allItems = dao.getAll().first().sortedBy { it.id }
+        val insertedItem = allItems.last()
+        val displayNumber = allItems.indexOfFirst { it.id == insertedItem.id } + 1
+
+        withContext(Dispatchers.Main) {
+            sendMealLiveUpdate(
+                context = context,
+                type = insertedItem.type,
+                location = insertedItem.location,
+                code = insertedItem.code,
+                dbId = insertedItem.id,
+                displayNumber = displayNumber
+            )
+        }
+        Log.d(
+            "PickupApp",
+            "插入取餐成功，显示编号 #$displayNumber，真实 ID ${insertedItem.id}"
+        )
     }
 }
 
@@ -339,6 +642,81 @@ private fun sendPickupLiveUpdate(
     builder.addAction(
         android.R.drawable.ic_menu_close_clear_cancel,
         "已取件",
+        cancelPendingIntent
+    )
+
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    notificationManager.notify(dbId, builder.build())
+}
+
+private fun sendMealLiveUpdate(
+    context: Context,
+    type: String,
+    location: String,
+    code: String,
+    dbId: Int,
+    displayNumber: Int
+) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) != PackageManager.PERMISSION_GRANTED
+    ) {
+        return
+    }
+
+    val channelId = "pickup_code_channel"
+
+    // 根据类型选择 small icon（纯白线条图标）
+    val smallIconRes = when (type) {
+        "咖啡" -> R.drawable.coffee
+        "奶茶" -> R.drawable.milkshake
+        "西餐" -> R.drawable.mcdonalds
+        "中餐" -> R.drawable.rice
+        else   -> R.drawable.ic_delivery
+    }
+
+    // large icon 可以用彩色版
+    val largeIconRes = when (type) {
+        "咖啡" -> R.drawable.coffee_cup
+        "奶茶" -> R.drawable.orange_juice
+        "西餐" -> R.drawable.burger
+        "中餐" -> R.drawable.orange_chicken
+        else   -> R.drawable.delivery_man
+    }
+    val largeIconBitmap = BitmapFactory.decodeResource(context.resources, largeIconRes)
+
+    val builder = NotificationCompat.Builder(context, channelId)
+        .setSmallIcon(smallIconRes)
+        .setLargeIcon(largeIconBitmap)
+        .setContentTitle(code)
+        .setContentText("取餐点：$location")
+        .setStyle(
+            NotificationCompat.BigTextStyle()
+                .setBigContentTitle("取餐提醒 #$displayNumber")
+                .bigText("取餐点：$location\n取餐码：$code")
+        )
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setAutoCancel(false)
+        .setRequestPromotedOngoing(true)
+
+    val cancelIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+        action = "ACTION_MARK_AS_PICKED_UP"
+        putExtra("notification_id", dbId)
+    }
+    val cancelPendingIntent = PendingIntent.getBroadcast(
+        context,
+        dbId,
+        cancelIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    builder.addAction(
+        android.R.drawable.ic_menu_close_clear_cancel,
+        "已取餐",
         cancelPendingIntent
     )
 

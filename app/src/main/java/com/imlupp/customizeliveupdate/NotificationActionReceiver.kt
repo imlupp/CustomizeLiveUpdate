@@ -20,13 +20,22 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
                 // 删除数据库对应条目（关键！）
                 CoroutineScope(Dispatchers.IO).launch {
-                    val dao = MainActivity.database.pickupDao()
-                    // 通过 id 查找并删除
-                    val itemToDelete = dao.getAll().first().find { it.id == notificationId }
-                    if (itemToDelete != null) {
-                        dao.delete(itemToDelete)
+
+                    val pickupDao = MainActivity.database.pickupDao()
+                    val mealDao = MainActivity.database.mealDao()
+
+                    val pickupItem = pickupDao.getAll().first().find { it.id == notificationId }
+                    if (pickupItem != null) {
+                        pickupDao.delete(pickupItem)
+                        return@launch
+                    }
+
+                    val mealItem = mealDao.getAll().first().find { it.id == notificationId }
+                    if (mealItem != null) {
+                        mealDao.delete(mealItem)
                     }
                 }
+
             }
         }
     }

@@ -14,8 +14,8 @@ android {
         applicationId = "com.imlupp.customizeliveupdate"
         minSdk = 36
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -58,7 +58,7 @@ dependencies {
     implementation("androidx.room:room-runtime:2.7.1")
 //    annotationProcessor("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.7.1")  // Kotlin 支持
-    implementation("androidx.compose.material:material-icons-core:1.7.7")
+    implementation("androidx.compose.material:material-icons-core:1.7.8")
     val room_version = "2.7.1"  // 或 2.7.x / 2.8.x，看你想用最新版
 
     implementation("androidx.room:room-runtime:$room_version")
@@ -67,4 +67,8 @@ dependencies {
     // 用 KSP 处理 Room 注解（关键！）
     ksp("androidx.room:room-compiler:$room_version")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
+    implementation("androidx.navigation:navigation-compose:2.8.3")  // 或最新版本
+    implementation("androidx.compose.material3:material3-window-size-class:1.3.0")  // 可选，用于响应式
+    implementation("androidx.compose.material3:material3")
+
 }
