@@ -24,11 +24,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,6 +56,11 @@ import com.imlupp.customizeliveupdate.ui.theme.CustomizeLiveUpdateTheme
 import android.graphics.BitmapFactory
 import android.app.PendingIntent
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
 import androidx.core.app.NotificationCompat
 import androidx.room.Room
 import kotlinx.coroutines.CoroutineScope
@@ -65,11 +71,32 @@ import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.app.NotificationManagerCompat
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.ui.text.style.TextDecoration
+import android.net.Uri
+import androidx.compose.foundation.layout.Box
 
+var appPrimaryColor by mutableStateOf(Color(0xFF0066CC))
 class MainActivity : ComponentActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
 
@@ -182,8 +209,12 @@ fun MainApp(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp  // 加一点浮起感
+            ){
                 tabs.forEach { tab ->
                     val icon = when (tab) {
                         BottomTab.Pickup -> Icons.Filled.Home
@@ -196,29 +227,50 @@ fun MainApp(
                         icon = {
                             Icon(
                                 imageVector = icon,
-                                contentDescription = tab.label
+                                contentDescription = tab.label,
+                                modifier = Modifier.size(26.dp)
                             )
                         },
-                        label = { Text(tab.label) }
+                        label = {
+                            Text(
+                                tab.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        )
                     )
                 }
             }
         }
     ) { innerPadding ->
-        when (selectedTab) {
-            BottomTab.Pickup -> MyScreen(
-                permissionLauncher = permissionLauncher,
-                modifier = Modifier.padding(innerPadding)
-            )
-
-            BottomTab.Meal -> MealScreen(
-                permissionLauncher = permissionLauncher,
-                modifier = Modifier.padding(innerPadding)
-            )
-
-            BottomTab.Settings -> SettingsScreen(
-                modifier = Modifier.padding(innerPadding)
-            )
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                // 从左到右滑动（默认方向）
+                if (targetState.ordinal > initialState.ordinal) {
+                    // 向右切换（下一个页面从右边滑入）
+                    slideInHorizontally { width -> width } + fadeIn() togetherWith
+                            slideOutHorizontally { width -> -width } + fadeOut()
+                } else {
+                    // 向左切换（上一个页面从左边滑入）
+                    slideInHorizontally { width -> -width } + fadeIn() togetherWith
+                            slideOutHorizontally { width -> width } + fadeOut()
+                }
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) { currentTab ->
+            when (currentTab) {
+                BottomTab.Pickup -> MyScreen(permissionLauncher)
+                BottomTab.Meal -> MealScreen(permissionLauncher)
+                BottomTab.Settings -> SettingsScreen()
+            }
         }
     }
 }
@@ -232,6 +284,7 @@ fun MyScreen(
     var pickupLocation by remember { mutableStateOf("") }
     var pickupCode by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()  // 关键：在这里获取协程作用域
+    var showAddPickupDialog by remember { mutableStateOf(false) }
 
     val pickupItems by MainActivity.database.pickupDao().getAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -240,109 +293,257 @@ fun MyScreen(
         modifier = modifier
             .fillMaxSize()
             .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        // horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "快递取件码 Live Updates",
-            style = MaterialTheme.typography.headlineMedium,
-            textAlign = TextAlign.Center
-        )
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        TextField(
-            value = pickupLocation,
-            onValueChange = { pickupLocation = it },
-            label = { Text("取件点（如：丰巢A区）") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TextField(
-            value = pickupCode,
-            onValueChange = { pickupCode = it },
-            label = { Text("取件码（如：874920）") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                if (pickupLocation.isBlank() || pickupCode.isBlank()) {
-                    Toast.makeText(context, "请填写取件点和取件码", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-
-                // 检查权限
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    Toast.makeText(context, "请先允许通知权限", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-
-                // 使用 rememberCoroutineScope 安全启动协程
-                coroutineScope.launch {
-                    addPickupItemAndNotify(
-                        location = pickupLocation,
-                        code = pickupCode,
-                        context = context
-                    )
-                    // 清空输入框（在主线程）
-                    pickupLocation = ""
-                    pickupCode = ""
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween  // 左右撑开
         ) {
-            Text("添加至取件列表")
-        }
+            Text(
+                text = "快递取件码",
+                style = MaterialTheme.typography.headlineMedium,
+                textAlign = TextAlign.Start
+            )
 
-        Spacer(modifier = Modifier.height(32.dp))
+            // 右侧添加按钮（圆形 + 图标）
+            IconButton(
+                onClick = { showAddPickupDialog = true },  // 点击弹出对话框
+                modifier = Modifier
+                    .size(48.dp)
 
-        Text("我的取件列表", style = MaterialTheme.typography.titleMedium)
 
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            items(pickupItems) { item ->
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val allItems = pickupItems.sortedBy { it.id }
-                        val displayNumber = allItems.indexOfFirst { it.id == item.id } + 1
-
-                        Text("#$displayNumber  ", style = MaterialTheme.typography.labelLarge)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("取件点：${item.location}")
-                            Text("取件码：${item.code}", style = MaterialTheme.typography.bodyLarge)
-                        }
-                        IconButton(onClick = {
-                            // 删除逻辑在这里
-                            CoroutineScope(Dispatchers.IO).launch {
-                                // 1. 从数据库删除这条记录
-                                MainActivity.database.pickupDao().delete(item)
-
-                                // 2. 取消对应的通知（用 dbId，也就是 item.id）
-                                NotificationManagerCompat.from(context).cancel(item.id)
-                            }
-                        }) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = "删除",
-                                tint = MaterialTheme.colorScheme.error  // 红色更醒目
-                            )
-                        }
-                    }
-                    HorizontalDivider()
-                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "添加取件码",
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(32.dp)
+                )
             }
         }
+        Box(modifier = modifier.fillMaxSize()) {
+            // 主内容
+            Column(modifier = Modifier.fillMaxSize()) {
+                // 标题 + 添加按钮 Row（保持不变）
+
+                if (pickupItems.isEmpty()) {
+                    // 正常空状态（如果你有的话，可以保留或删除）
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("📦", style = MaterialTheme.typography.displayLarge)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("还没有添加任何取件码", style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("点击右上角“+”添加吧～", style = MaterialTheme.typography.bodyLarge)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        items(pickupItems) { item ->
+                            // ★ 这里加上 displayNumber 的计算（和取餐码页面一模一样）
+                            val allItems = pickupItems.sortedBy { it.id }
+                            val displayNumber = allItems.indexOfFirst { it.id == item.id } + 1
+
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = CardDefaults.cardElevation(
+                                    defaultElevation = 0.dp
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)  // 很淡的灰色
+                                ),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "#$displayNumber",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        // color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(end = 16.dp)
+                                    )
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        // 第一行：取件码（细体 + 灰色）
+                                        Text(
+                                            text = "取件码",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Normal,          // 细体（Normal 就是细体）
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant  // 灰色（通常是浅灰）
+                                            ),
+                                            modifier = Modifier.padding(bottom = 2.dp)   // 和下面一行拉开一点间距
+                                        )
+
+                                        // 第二行：取件码数字（更大、更醒目）
+                                        Text(
+                                            text = item.code,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = 32.sp,                        // 比原来的 30.sp 稍小一点，避免挤，但已经很大了
+                                                fontWeight = FontWeight.Bold,
+                                                //letterSpacing = 1.sp                     // 字母/数字间距再拉大一点，更像验证码
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(bottom = 4.dp)   // 和下面一行间距更大
+                                        )
+                                        Text(
+                                            text = "取件点",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Normal,          // 细体（Normal 就是细体）
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant  // 灰色（通常是浅灰）
+                                            ),
+                                            modifier = Modifier.padding(bottom = 2.dp)   // 和下面一行拉开一点间距
+                                        )
+                                        // 第三行：取件点（保持原样，但整体间距已通过上面 padding 拉开）
+                                        Text(
+                                            text = item.location,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                MainActivity.database.pickupDao().delete(item)
+                                                NotificationManagerCompat.from(context).cancel(item.id)
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .height(36.dp)                    // 按钮高度小一点，更精致
+                                            .padding(start = 12.dp),          // 和左边文字留点间距
+                                        shape = RoundedCornerShape(16.dp),   // 圆角
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),  // 浅红色背景
+                                            contentColor = MaterialTheme.colorScheme.primary,                       // 红色文字
+                                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        elevation = ButtonDefaults.buttonElevation(
+                                            defaultElevation = 0.dp,          // 无阴影，更扁平
+                                            pressedElevation = 2.dp
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+                                    ) {
+                                        Text(
+                                            text = "已取",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+        if (showAddPickupDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showAddPickupDialog = false
+                    // 可选：清空输入框，避免下次打开残留旧数据
+                    pickupLocation = ""
+                    pickupCode = ""
+                },
+                title = {
+                    Text(
+                        text = "添加新取件码",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // 原来的第一个 TextField
+                        TextField(
+                            value = pickupLocation,
+                            onValueChange = { pickupLocation = it },
+                            label = { Text("取件点（如：丰巢A区）") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // 原来的第二个 TextField
+                        TextField(
+                            value = pickupCode,
+                            onValueChange = { pickupCode = it },
+                            label = { Text("取件码（如：874920）") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (pickupLocation.isBlank() || pickupCode.isBlank()) {
+                                Toast.makeText(context, "请填写取件点和取件码", Toast.LENGTH_SHORT).show()
+                                return@TextButton
+                            }
+
+                            // 检查权限
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                Toast.makeText(context, "请先允许通知权限", Toast.LENGTH_SHORT).show()
+                                return@TextButton
+                            }
+
+                            // 添加逻辑（和原来完全一样）
+                            coroutineScope.launch {
+                                addPickupItemAndNotify(
+                                    location = pickupLocation,
+                                    code = pickupCode,
+                                    context = context
+                                )
+                                pickupLocation = ""
+                                pickupCode = ""
+                            }
+
+                            showAddPickupDialog = false  // 关闭弹窗
+                        }
+                    ) {
+                        Text("添加")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddPickupDialog = false }) {
+                        Text("取消")
+                    }
+                }
+            )
+        }
+
+
     }
 }
 @OptIn(ExperimentalMaterial3Api::class)
@@ -358,6 +559,7 @@ fun MealScreen(
     var selectedMealType by remember { mutableStateOf(mealTypes.first()) }
     var mealLocation by remember { mutableStateOf("") }
     var mealCode by remember { mutableStateOf("") }
+    var showAddMealDialog by remember { mutableStateOf(false) }
 
     val mealItems by MainActivity.database.mealDao().getAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -366,178 +568,385 @@ fun MealScreen(
         modifier = modifier
             .fillMaxSize()
             .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        // horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "取餐码 Live Updates",
-            style = MaterialTheme.typography.headlineMedium,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // SegmentedButton 部分（颜色参数已修正）
-        SingleChoiceSegmentedButtonRow(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            // 可选：加点间距或高度调整
-            // colors = SegmentedButtonDefaults.colors() 如果想用默认主题色，就不用写 colors
+                .padding(horizontal = 4.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween  // 左右撑开
         ) {
-            mealTypes.forEachIndexed { index, type ->
-                SegmentedButton(
-                    selected = selectedMealType == type,
-                    onClick = { selectedMealType = type },
-                    shape = SegmentedButtonDefaults.itemShape(
-                        index = index,
-                        count = mealTypes.size
-                    ),
-                    // 这里是正确颜色参数（用你的主题色或自定义）
-                    colors = SegmentedButtonDefaults.colors(
-                        activeContainerColor = MaterialTheme.colorScheme.primary,          // 选中背景（通常蓝色）
-                        activeContentColor = MaterialTheme.colorScheme.onPrimary,          // 选中文字（白色）
-                        inactiveContainerColor = MaterialTheme.colorScheme.surfaceVariant, // 未选中背景（浅灰）
-                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // 未选中文字（深灰）
-                        // 可选：加边框颜色
-                        activeBorderColor = MaterialTheme.colorScheme.primary,
-                        inactiveBorderColor = MaterialTheme.colorScheme.outline
-                    )
-                ) {
-                    Text(
-                        text = type,
-                        style = MaterialTheme.typography.labelLarge,  // 字体大一点，更清晰
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            Text(
+                text = "取餐码",
+                style = MaterialTheme.typography.headlineMedium,
+                textAlign = TextAlign.Start
+            )
+
+            // 右侧添加按钮（圆形 + 图标）
+            IconButton(
+                onClick = { showAddMealDialog = true },  // 点击弹出对话框
+                modifier = Modifier
+                    .size(48.dp)
+
+
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "添加取餐码",
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(32.dp)
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))  // 加大点间距，美观
 
-        TextField(
-            value = mealLocation,
-            onValueChange = { mealLocation = it },
-            label = { Text("取餐点（如：星巴克一楼）") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            Box(modifier = modifier.fillMaxSize()) {
+                // 主内容
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // 标题 + 添加按钮 Row（保持不变）
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TextField(
-            value = mealCode,
-            onValueChange = { mealCode = it },
-            label = { Text("取餐码（如：A47）") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                if (mealLocation.isBlank() || mealCode.isBlank()) {
-                    Toast.makeText(context, "请填写取餐点和取餐码", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.POST_NOTIFICATIONS
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    Toast.makeText(context, "请先允许通知权限", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-
-                coroutineScope.launch {
-                    addMealItemAndNotify(
-                        type = selectedMealType,
-                        location = mealLocation,
-                        code = mealCode,
-                        context = context
-                    )
-                    mealLocation = ""
-                    mealCode = ""
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("添加至取餐列表")
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Text("我的取餐列表", style = MaterialTheme.typography.titleMedium)
-
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            items(mealItems) { item ->
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val allItems = mealItems.sortedBy { it.id }
-                        val displayNumber = allItems.indexOfFirst { it.id == item.id } + 1
-
-                        Text(
-                            "#$displayNumber  ",
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("类型：${item.type}")
-                            Text("取餐点：${item.location}")
+                    if (mealItems.isEmpty()) {
+                        // 正常空状态（如果你有的话，可以保留或删除）
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text("🍱", style = MaterialTheme.typography.displayLarge)
+                            Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                "取餐码：${item.code}",
-                                style = MaterialTheme.typography.bodyLarge
+                                "还没有添加任何取餐码",
+                                style = MaterialTheme.typography.titleMedium
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("点击右上角“+”添加吧～", style = MaterialTheme.typography.bodyLarge)
                         }
-                        IconButton(onClick = {
-                            CoroutineScope(Dispatchers.IO).launch {
-                                MainActivity.database.mealDao().delete(item)
-                                NotificationManagerCompat.from(context).cancel(item.id)
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            items(mealItems) { item ->
+                                val allItems = mealItems.sortedBy { it.id }
+                                val displayNumber = allItems.indexOfFirst { it.id == item.id } + 1
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    elevation = CardDefaults.cardElevation(
+                                        defaultElevation = 0.dp
+                                    ),
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)  // 很淡的灰色
+                                    ),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                                            alpha = 0.4f
+                                        )
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+//                        Text(
+//                            "#$displayNumber",
+//                            style = MaterialTheme.typography.titleMedium,
+//                            color = MaterialTheme.colorScheme.primary,
+//                            modifier = Modifier.padding(end = 10.dp)
+//                        )
+                                        Image(
+                                            painter = painterResource(
+                                                id = when (item.type) {
+                                                    "咖啡" -> R.drawable.coffee_cup
+                                                    "奶茶" -> R.drawable.orange_juice
+                                                    "西餐" -> R.drawable.burger
+                                                    "中餐" -> R.drawable.orange_chicken
+                                                    else -> R.drawable.ic_delivery
+                                                },
+                                            ),
+                                            contentDescription = item.type,
+                                            modifier = Modifier
+                                                .size(70.dp)                  // 大图标，48dp 比较醒目
+                                                .padding(end = 16.dp),        // 右边留空隙
+                                        )
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            // Text("类型：${item.type}")
+                                            Text(item.location)
+                                            Text(
+                                                item.code,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    fontSize = 30.sp,                             // ★ 调大到 20sp（推荐先试这个）
+                                                    fontWeight = FontWeight.Bold,                 // 加粗，更醒目
+                                                    letterSpacing = 0.5.sp                        // 字母间距稍大一点，更易读（可选）
+                                                ),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                CoroutineScope(Dispatchers.IO).launch {
+                                                    MainActivity.database.mealDao().delete(item)
+                                                    NotificationManagerCompat.from(context)
+                                                        .cancel(item.id)
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .height(36.dp)                    // 按钮高度小一点，更精致
+                                                .padding(start = 12.dp),          // 和左边文字留点间距
+                                            shape = RoundedCornerShape(16.dp),   // 圆角
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary.copy(
+                                                    alpha = 0.1f
+                                                ),  // 浅红色背景
+                                                contentColor = MaterialTheme.colorScheme.primary,                       // 红色文字
+                                                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            elevation = ButtonDefaults.buttonElevation(
+                                                defaultElevation = 0.dp,          // 无阴影，更扁平
+                                                pressedElevation = 2.dp
+                                            ),
+                                            contentPadding = PaddingValues(
+                                                horizontal = 16.dp,
+                                                vertical = 0.dp
+                                            )
+                                        ) {
+                                            Text(
+                                                text = "已取",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        }) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = "删除",
-                                tint = MaterialTheme.colorScheme.error
-                            )
                         }
                     }
-                    HorizontalDivider()
                 }
+
+            }
+
+            if (showAddMealDialog) {
+                AlertDialog(
+                    onDismissRequest = {
+                        showAddMealDialog = false
+                        // 可选：清空输入，避免下次打开有残留
+                        mealLocation = ""
+                        mealCode = ""
+                    },
+                    title = {
+                        Text(
+                            text = "添加新取餐码",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // 类型选择 - 你的 SegmentedButton 部分（完整保留）
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 2.dp)
+                            ) {
+                                mealTypes.forEachIndexed { index, type ->
+                                    SegmentedButton(
+                                        selected = selectedMealType == type,
+                                        onClick = { selectedMealType = type },
+                                        shape = SegmentedButtonDefaults.itemShape(
+                                            index = index,
+                                            count = mealTypes.size
+                                        ),
+                                        colors = SegmentedButtonDefaults.colors(
+                                            activeContainerColor = MaterialTheme.colorScheme.primary,
+                                            activeContentColor = MaterialTheme.colorScheme.onPrimary,
+                                            inactiveContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            activeBorderColor = MaterialTheme.colorScheme.primary,
+                                            inactiveBorderColor = MaterialTheme.colorScheme.outline
+                                        )
+                                    ) {
+                                        Text(
+                                            text = type,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Spacer(modifier = Modifier.height(10.dp))
+
+                            // 取餐点输入框
+                            TextField(
+                                value = mealLocation,
+                                onValueChange = { mealLocation = it },
+                                label = { Text("取餐点（如：龙信蜜雪）") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Spacer(modifier = Modifier.height(10.dp))
+
+                            // 取餐码输入框
+                            TextField(
+                                value = mealCode,
+                                onValueChange = { mealCode = it },
+                                label = { Text("取餐码（如：C471）") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                if (mealLocation.isBlank() || mealCode.isBlank()) {
+                                    Toast.makeText(
+                                        context,
+                                        "请填写取餐点和取餐码",
+                                        Toast.LENGTH_SHORT
+                                    )
+                                        .show()
+                                    return@TextButton
+                                }
+
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    ) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    Toast.makeText(context, "请先允许通知权限", Toast.LENGTH_SHORT)
+                                        .show()
+                                    return@TextButton
+                                }
+
+                                coroutineScope.launch {
+                                    addMealItemAndNotify(
+                                        type = selectedMealType,
+                                        location = mealLocation,
+                                        code = mealCode,
+                                        context = context
+                                    )
+                                    mealLocation = ""
+                                    mealCode = ""
+                                }
+
+                                showAddMealDialog = false
+                            }
+                        ) {
+                            Text("添加")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAddMealDialog = false }) {
+                            Text("取消")
+                        }
+                    }
+                )
             }
         }
     }
-}
+
+
+
 
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
-
+    val context = LocalContext.current
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "设置",
-            style = MaterialTheme.typography.headlineMedium,
-            textAlign = TextAlign.Center
-        )
+        // 标题（保持左对齐风格，和其他页面一致）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "设置",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.weight(1f))
+        }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.weight(1f))  // 把内容推到中间偏下
 
-        Text(
-            text = "版本：1.0.2-beta",
-            style = MaterialTheme.typography.bodyMedium
-        )
+        // “关于我们”卡片式区域（简单美观）
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 16.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "关于",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Text(
+                    text = "CustomizeLiveUpdate",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Text(
+                    text = "版本：1.1.0",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+
+                // GitHub 链接（可点击）
+                Text(
+                    text = "GitHub 项目地址",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline,
+                    modifier = Modifier
+                        .clickable {
+                            // 点击打开浏览器（需要添加 Intent 代码，下面有说明）
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/imlupp/CustomizeLiveUpdate"))
+                            context.startActivity(intent)
+                        }
+                )
+
+            }
+        }
+
+
+
     }
 }
 
@@ -616,11 +1025,11 @@ private fun sendPickupLiveUpdate(
         .setSmallIcon(R.drawable.ic_delivery)
         .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.delivery_man))
         .setContentTitle(code)
-        .setContentText("取件点：$location")
+        .setContentText(location)
         .setStyle(
             NotificationCompat.BigTextStyle()
-                .setBigContentTitle("快递取件提醒 #$displayNumber")
-                .bigText("取件点：$location\n取件码：$code")
+                .setBigContentTitle(code)
+                .bigText(location)
         )
         .setOngoing(true)
         .setOnlyAlertOnce(true)
@@ -691,11 +1100,11 @@ private fun sendMealLiveUpdate(
         .setSmallIcon(smallIconRes)
         .setLargeIcon(largeIconBitmap)
         .setContentTitle(code)
-        .setContentText("取餐点：$location")
+        .setContentText(location)
         .setStyle(
             NotificationCompat.BigTextStyle()
-                .setBigContentTitle("取餐提醒 #$displayNumber")
-                .bigText("取餐点：$location\n取餐码：$code")
+                .setBigContentTitle(code)
+                .bigText(location)
         )
         .setOngoing(true)
         .setOnlyAlertOnce(true)
