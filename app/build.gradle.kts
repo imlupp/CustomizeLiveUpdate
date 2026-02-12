@@ -14,15 +14,19 @@ android {
         applicationId = "com.imlupp.customizeliveupdate"
         minSdk = 36
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.1.1"
+        versionCode = 6
+        versionName = "1.1.2"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -72,6 +76,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.3")  // 或最新版本
     implementation("androidx.compose.material3:material3-window-size-class:1.3.0")  // 可选，用于响应式
     implementation("androidx.compose.material3:material3:1.4.0")
+
 
 
 }

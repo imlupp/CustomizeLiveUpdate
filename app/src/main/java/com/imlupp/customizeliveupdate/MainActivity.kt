@@ -94,9 +94,20 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.ui.text.style.TextDecoration
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.RadioButton
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 
-var appPrimaryColor by mutableStateOf(Color(0xFF0066CC))
+
+
+
+var appThemeMode by mutableStateOf(AppThemeMode.SYSTEM)
+
+
 class MainActivity : ComponentActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
 
@@ -116,6 +127,20 @@ class MainActivity : ComponentActivity() {
         )
             .fallbackToDestructiveMigration()
             .build()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val themeDao = database.themeDao()
+            val savedTheme = themeDao.getTheme()
+            val mode = when (savedTheme?.mode) {
+                AppThemeMode.LIGHT.name -> AppThemeMode.LIGHT
+                AppThemeMode.DARK.name -> AppThemeMode.DARK
+                AppThemeMode.SYSTEM.name -> AppThemeMode.SYSTEM
+                else -> AppThemeMode.SYSTEM
+            }
+            withContext(Dispatchers.Main) {
+                appThemeMode = mode
+            }
+        }
 
         permissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -269,7 +294,10 @@ fun MainApp(
             when (currentTab) {
                 BottomTab.Pickup -> MyScreen(permissionLauncher)
                 BottomTab.Meal -> MealScreen(permissionLauncher)
-                BottomTab.Settings -> SettingsScreen()
+                BottomTab.Settings -> SettingsScreenRoot(
+                    currentTheme = appThemeMode,
+                    onThemeChange = { applyAppTheme(it) }
+                )
             }
         }
     }
@@ -862,13 +890,78 @@ fun MealScreen(
     }
 
 
+enum class SettingsSubPage {
+    MAIN,
+    CHANGELOG
+}
+@Composable
+fun SettingsScreenRoot(
+    currentTheme: AppThemeMode,
+    onThemeChange: (AppThemeMode) -> Unit
+) {
 
+    var subPage by rememberSaveable {
+        mutableStateOf(SettingsSubPage.MAIN)
+    }
+    // 🔥 关键：拦截系统返回
+    BackHandler(enabled = subPage != SettingsSubPage.MAIN) {
+        // 当不是主设置页时，返回到主设置页
+        subPage = SettingsSubPage.MAIN
+    }
+    AnimatedContent(
+        targetState = subPage,
+        transitionSpec = {
+            if (targetState.ordinal > initialState.ordinal) {
+                // 下一页 → 从右滑入，左边出去
+                slideInHorizontally { width -> width } + fadeIn() togetherWith
+                        slideOutHorizontally { width -> -width } + fadeOut()
+            } else {
+                // 上一页 → 从左滑入，右边出去
+                slideInHorizontally { width -> -width } + fadeIn() togetherWith
+                        slideOutHorizontally { width -> width } + fadeOut()
+            }
+        }
+    ) { page ->
+
+        when (page) {
+
+            SettingsSubPage.MAIN -> {
+                SettingsScreen(
+                    currentTheme = currentTheme,
+                    onThemeChange = onThemeChange,
+                    onOpenChangeLog = {
+                        subPage = SettingsSubPage.CHANGELOG
+                    }
+                )
+            }
+
+            SettingsSubPage.CHANGELOG -> {
+                ChangeLogScreen(
+                    onBack = {
+                        subPage = SettingsSubPage.MAIN
+                    }
+                )
+            }
+        }
+    }
+}
+
+enum class AppThemeMode(val label: String) {
+    LIGHT("浅色模式"),
+    DARK("深色模式"),
+    SYSTEM("跟随系统")
+}
 
 @Composable
 fun SettingsScreen(
+    onOpenChangeLog: () -> Unit,
+    currentTheme: AppThemeMode,
+    onThemeChange: (AppThemeMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    // 当前选中的主题模式
+    var selectedTheme by rememberSaveable { mutableStateOf(AppThemeMode.SYSTEM) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -889,13 +982,66 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.weight(1f))
         }
 
-        Spacer(modifier = Modifier.weight(1f))  // 把内容推到中间偏下
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 主题模式选择
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "主题模式",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                AppThemeMode.entries.forEach { mode ->
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onThemeChange(mode) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        CompositionLocalProvider(
+                            LocalMinimumInteractiveComponentSize provides 0.dp
+                        ) {
+                            RadioButton(
+                                selected = currentTheme == mode,
+                                onClick = { onThemeChange(mode) }
+                            )
+                        }
+
+                        Spacer(Modifier.width(4.dp))
+
+                        Text(mode.label)
+                    }
+                }
+
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         // “关于我们”卡片式区域（简单美观）
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 16.dp),
+                .padding(vertical = 8.dp),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -906,7 +1052,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                // horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
@@ -922,9 +1068,18 @@ fun SettingsScreen(
                 )
 
                 Text(
-                    text = "版本：1.1.0",
+                    text = "版本：1.1.2-beta",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "更新日志",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline,
+                    modifier = Modifier.clickable {
+                        onOpenChangeLog()
+                    }
                 )
 
 
@@ -949,6 +1104,140 @@ fun SettingsScreen(
 
     }
 }
+
+fun applyAppTheme(mode: AppThemeMode) {
+    appThemeMode = mode
+    CoroutineScope(Dispatchers.IO).launch {
+        MainActivity.database.themeDao().saveTheme(
+            ThemeEntity(
+                id = 0,
+                mode = mode.name
+            )
+        )
+    }
+}
+
+
+@Composable
+fun ChangeLogScreen(
+    onBack: () -> Unit, // 返回事件，由调用方决定怎么处理
+    modifier: Modifier = Modifier
+) {
+    // 更新日志数据，每条可单独修改
+    val changeLogData = listOf(
+        "1.1.1" to listOf(
+            "🧭 新增 无取件码/取餐码时的添加引导",
+            "🐛 修复 页面切换时异常显示的问题"
+        ),
+        "1.1.0-beta" to listOf(
+            "🎨 优化 全新UI设计，界面更简洁易操作",
+            "ℹ️ 新增 设置页面「关于」板块",
+            "✅ 优化 「已取」按钮样式，交互更清晰",
+            "📄 优化 实时通知样式，去除冗余信息，展示更直观"
+        ),
+        "1.0.2-beta" to listOf(
+            "🍱 新增 取餐码功能模块，一App两用",
+            "⚙️ 新增 设置选项（功能持续完善中）",
+            "🔄 优化 餐品类型选择逻辑，操作更顺滑",
+            "🎨 优化 为不同餐品匹配图标，辨识度提升",
+            "🐛 修复 偶现覆盖安装后闪退的问题"
+        ),
+        "1.0.1" to listOf(
+            "🛠 优化 首次启动时主动请求通知权限",
+            "🐛 修复 偶现通知无法显示为实时活动样式",
+            "🎨 优化 通知中心快递图标颜色显示"
+        ),
+        "1.0.0" to listOf(
+            "✨ 新增 手动添加取件码至 Live Update 通知",
+            "📦 新增 取件码列表管理功能",
+            "🔧 修复 重新打开 App 时通知未恢复显示的问题"
+        )
+    )
+
+    Column(modifier = modifier.fillMaxSize()) {
+        // 顶部 AppBar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = "返回"
+                )
+
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "更新日志",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        // 内容滚动
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 提示信息 Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "💡 注意：Beta版本为开发后面向用户的测试版本，存在功能不完善或不稳定情况，若遇到问题请在 Issues 中提出或联系开发者。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // 每个版本的卡片
+            items(changeLogData) { (version, items) ->
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Version $version",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        items.forEach { itemText ->
+                            Text(
+                                text = itemText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 底部留空
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
 
 // 新增：独立的 suspend 函数，负责插入数据库并发送通知
 private suspend fun addPickupItemAndNotify(location: String, code: String, context: Context) {

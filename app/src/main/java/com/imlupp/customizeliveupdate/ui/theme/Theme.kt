@@ -11,7 +11,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import com.imlupp.customizeliveupdate.appPrimaryColor
+import com.imlupp.customizeliveupdate.AppThemeMode
+import com.imlupp.customizeliveupdate.appThemeMode
 
 // 自定义更清爽、专业的中性蓝灰色调（浅色模式）
 private val LightColorScheme = lightColorScheme(
@@ -52,13 +53,18 @@ fun CustomizeLiveUpdateTheme(
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val resolvedDarkTheme = when (appThemeMode) {
+        AppThemeMode.LIGHT -> false
+        AppThemeMode.DARK -> true
+        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (resolvedDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme.copy(primary = appPrimaryColor)  // ← 这里用全局变量
-        else -> LightColorScheme.copy(primary = appPrimaryColor)      // ← 这里用全局变量
+        resolvedDarkTheme -> DarkColorScheme
+        else -> LightColorScheme
     }
 
     MaterialTheme(
