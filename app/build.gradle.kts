@@ -12,10 +12,10 @@ android {
 
     defaultConfig {
         applicationId = "com.imlupp.customizeliveupdate"
-        minSdk = 36
+        minSdk = 31
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.1.2"
+        versionCode = 7
+        versionName = "1.1.3"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -60,22 +60,23 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-    implementation("androidx.core:core:1.17.0")  // 最新版，支持setRequestPromotedOngoing
+    implementation("androidx.core:core:1.17.0")
     implementation("androidx.room:room-runtime:2.7.1")
 //    annotationProcessor("androidx.room:room-compiler:2.6.1")
-    implementation("androidx.room:room-ktx:2.7.1")  // Kotlin 支持
+    implementation("androidx.room:room-ktx:2.7.1")
     implementation("androidx.compose.material:material-icons-core:1.7.8")
-    val room_version = "2.7.1"  // 或 2.7.x / 2.8.x，看你想用最新版
+    val room_version = "2.7.1"
 
     implementation("androidx.room:room-runtime:$room_version")
     implementation("androidx.room:room-ktx:$room_version")  // 协程支持
 
-    // 用 KSP 处理 Room 注解（关键！）
+    // 用 KSP 处理 Room
     ksp("androidx.room:room-compiler:$room_version")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
-    implementation("androidx.navigation:navigation-compose:2.8.3")  // 或最新版本
-    implementation("androidx.compose.material3:material3-window-size-class:1.3.0")  // 可选，用于响应式
+    implementation("androidx.navigation:navigation-compose:2.8.3")
+    implementation("androidx.compose.material3:material3-window-size-class:1.3.0")
     implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
 
 
 

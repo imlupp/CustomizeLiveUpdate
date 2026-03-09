@@ -14,15 +14,15 @@ import androidx.compose.ui.platform.LocalContext
 import com.imlupp.customizeliveupdate.AppThemeMode
 import com.imlupp.customizeliveupdate.appThemeMode
 
-// 自定义更清爽、专业的中性蓝灰色调（浅色模式）
+
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF0066CC),           // 主色：活力蓝
-    primaryContainer = Color(0xFFE0F0FF),   // 浅蓝容器
+    primary = Color(0xFF0066CC),
+    primaryContainer = Color(0xFFE0F0FF),
     onPrimary = Color.White,
-    secondary = Color(0xFF6B7280),          // 灰色辅助
+    secondary = Color(0xFF6B7280),
     secondaryContainer = Color(0xFFE5E7EB),
     onSecondary = Color.White,
-    tertiary = Color(0xFF10B981),           // 绿色点缀（成功/已取件用）
+    tertiary = Color(0xFF10B981),
     background = Color(0xFFFAFAFA),
     surface = Color.White,
     surfaceVariant = Color(0xFFF3F4F6),
@@ -32,7 +32,7 @@ private val LightColorScheme = lightColorScheme(
 
 // 深色模式（更暗、更护眼）
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF60A5FA),            // 浅蓝（在深色下更醒目）
+    primary = Color(0xFF60A5FA),
     primaryContainer = Color(0xFF1E40AF),
     onPrimary = Color.White,
     secondary = Color(0xFF9CA3AF),
@@ -69,7 +69,7 @@ fun CustomizeLiveUpdateTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,  // 保持原样，或后面我们再优化字体
+        typography = Typography,
         content = content
     )
 }
